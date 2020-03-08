@@ -1,3 +1,9 @@
+### Changed
+
+- fix: Dynamic import with destructuring and renaming
+- fix: Do not classify other lambdas as using a dynamic import
+- fix: Include methods when searching for dynamic imports
+
 ## [6.1.0] - 4 Mar 2020
 
 ### Added
