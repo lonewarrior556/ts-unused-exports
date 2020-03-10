@@ -30,7 +30,10 @@ function isWithArguments(node: ts.Node): node is WithArguments {
 // A whitelist, to over-ride namespaceBlacklist.
 //
 // We need to search some structures that would not have a namespace.
-const whitelist = [ts.SyntaxKind.MethodDeclaration];
+const whitelist = [
+  ts.SyntaxKind.MethodDeclaration,
+  ts.SyntaxKind.PropertyAssignment,
+];
 
 const runForChildren = (
   next: ts.Node,
@@ -41,7 +44,9 @@ const runForChildren = (
     .filter(
       c => !namespaceBlacklist.includes(c.kind) || whitelist.includes(c.kind),
     )
-    .forEach(node => fun(node));
+    .forEach(node => {
+      fun(node);
+    });
 };
 
 const recurseIntoChildren = (
@@ -129,40 +134,78 @@ const findLambdasWithDereferencing = (node: ts.Node): string[] => {
   return what;
 };
 
+const getArgumentFrom = (node: ts.Node): string | undefined => {
+  if (isWithArguments(node)) {
+    return node.arguments[0].getText();
+  }
+};
+
+const addImportViaLambda = (
+  node: ts.Node,
+  from: string,
+  addImport: (fw: FromWhat) => void,
+): void => {
+  const what = ['default'].concat(findLambdasWithDereferencing(node));
+
+  addImport({
+    from: getFromText(from),
+    what,
+  });
+};
+
+const handleImportWithinExpression = (
+  node: ts.Node,
+  addImport: (fw: FromWhat) => void,
+): void => {
+  let expr = node;
+
+  while (isWithExpression(expr)) {
+    const newExpr = expr.expression;
+
+    if (newExpr.getText() === 'import') {
+      const from = getArgumentFrom(expr);
+
+      if (!!from) {
+        addImportViaLambda(node, from, addImport);
+      }
+    }
+
+    if (isWithExpression(newExpr)) {
+      expr = newExpr;
+    } else {
+      break;
+    }
+  }
+};
+
+// Handle import within object literal - for example, inside a TSX file
+const handleImportWithinObjectLiteral = (
+  node: ts.Node,
+  addImport: (fw: FromWhat) => void,
+): void => {
+  const firstChild = node.getChildAt(0);
+
+  if (!firstChild) return;
+
+  if (firstChild.getChildren()[0]?.getText() === 'import') {
+    const from = firstChild.getChildren()[2]?.getText();
+
+    if (!!from) {
+      addImportViaLambda(node, from, addImport);
+    }
+  }
+};
+
 export const addDynamicImports = (
   node: ts.Node,
   addImport: (fw: FromWhat) => void,
 ): void => {
   const addImportsInAnyExpression = (node: ts.Node): boolean => {
-    const getArgumentFrom = (node: ts.Node): string | undefined => {
-      if (isWithArguments(node)) {
-        return node.arguments[0].getText();
-      }
-    };
-
     if (isWithExpression(node)) {
-      let expr = node;
-      while (isWithExpression(expr)) {
-        const newExpr = expr.expression;
-
-        if (newExpr.getText() === 'import') {
-          const importing = getArgumentFrom(expr);
-
-          if (!!importing) {
-            const what = ['default'].concat(findLambdasWithDereferencing(node));
-
-            addImport({
-              from: getFromText(importing),
-              what,
-            });
-          }
-        }
-
-        if (isWithExpression(newExpr)) {
-          expr = newExpr;
-        } else {
-          break;
-        }
+      handleImportWithinExpression(node, addImport);
+    } else {
+      if (node.parent.kind === ts.SyntaxKind.ObjectLiteralExpression) {
+        handleImportWithinObjectLiteral(node, addImport);
       }
     }
 
