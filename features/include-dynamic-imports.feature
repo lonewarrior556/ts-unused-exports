@@ -145,7 +145,7 @@ Scenario: Dynamically import inside a div (object literal)
     export const A = 1;
     export const A_unused = 2;
     """
-  And file "b.ts" is
+  And file "b.tsx" is
     """
     const element = (
     <div
@@ -157,4 +157,4 @@ Scenario: Dynamically import inside a div (object literal)
     export const B_unused = 0;
     """
   When analyzing "tsconfig.json"
-  Then the result is { "b.ts": ["B_unused"], "a.ts": ["A_unused"] }
+  Then the result is { "a.ts": ["A_unused"], "b.tsx": ["B_unused"] }
